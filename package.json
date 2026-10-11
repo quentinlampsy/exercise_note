@@ -1,0 +1,14 @@
+{
+  "name": "form-workout-journal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mobile-first workout journal with recurring plans, set logging, edit history and Firebase sync",
+  "scripts": {
+    "start": "node workout/tools/serve.cjs",
+    "test": "node --test workout/tests/core.test.mjs",
+    "test:browser": "node workout/tools/browser-test.cjs",
+    "build": "node workout/tools/build.cjs",
+    "build:preview": "node workout/tools/build.cjs --local"
+  },
+  "engines": { "node": ">=20" }
+}

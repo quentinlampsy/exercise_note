@@ -1,0 +1,15 @@
+node_modules/
+dist/
+test-results/
+.deploy/
+.firebase/
+*-debug.log
+.env*
+*.backup
+service-account*.json
+planner-data*.json
+Bazi-Planner-*.json
+FORM-workouts-*.json
+FORM-source.zip
+serviceAccountKey.json
+workout/tests/screenshots/

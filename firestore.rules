@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/records/{recordId} {
+      function owner() { return request.auth != null && request.auth.uid == uid; }
+      function validEntry() {
+        let entry = request.resource.data;
+        return entry.keys().hasOnly(['collection', 'id', 'deleted', 'updatedAt', 'record', 'deviceId'])
+          && entry.keys().hasAll(['collection', 'id', 'deleted', 'updatedAt', 'record'])
+          && entry.collection in ['items', 'dailyDiaryRecords', 'diaryRecords', 'tarotRecords', 'plannerTags']
+          && entry.id is string && entry.id.size() > 0 && entry.id.size() <= 180
+          && entry.updatedAt is string && entry.updatedAt.size() <= 30
+          && entry.deleted is bool
+          && ((entry.deleted && entry.record == null) || (!entry.deleted && entry.record is map && entry.record.id == entry.id));
+      }
+      allow read: if owner();
+      allow create, update: if owner() && validEntry();
+      // Deletions are tombstones, so older offline devices cannot recreate removed entries.
+      allow delete: if false;
+    }
+    // FORM workouts are isolated from the existing calendar records.
+    match /users/{uid}/workoutRecords/{recordId} {
+      function owner() { return request.auth != null && request.auth.uid == uid; }
+      function validSet(s) {
+        return s is map && s.keys().hasOnly(['weight', 'reps', 'done'])
+          && s.weight is number && s.weight >= 0 && s.weight <= 2000
+          && s.reps is int && s.reps >= 1 && s.reps <= 999 && s.done is bool;
+      }
+      function validSets(s) {
+        return s is list && s.size() >= 1 && s.size() <= 12
+          && validSet(s[0]) && (s.size() < 2 || validSet(s[1]))
+          && (s.size() < 3 || validSet(s[2])) && (s.size() < 4 || validSet(s[3]))
+          && (s.size() < 5 || validSet(s[4])) && (s.size() < 6 || validSet(s[5]))
+          && (s.size() < 7 || validSet(s[6])) && (s.size() < 8 || validSet(s[7]))
+          && (s.size() < 9 || validSet(s[8])) && (s.size() < 10 || validSet(s[9]))
+          && (s.size() < 11 || validSet(s[10])) && (s.size() < 12 || validSet(s[11]));
+      }
+      function validWorkout(d) {
+        return d.exercise is string && d.exercise.size() > 0 && d.exercise.size() <= 100
+          && d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && d.group in ['Back', 'Chest', 'Legs', 'Shoulders', 'Arms', 'Core', 'Cardio', 'Other']
+          && d.unit in ['kg', 'lb', 'bodyweight'] && validSets(d.sets)
+          && d.notes is string && d.notes.size() <= 2000
+          && d.repeat is map && d.repeat.kind in ['none', 'weekly', 'daily', 'interval']
+          && d.repeat.interval is int && d.repeat.interval >= 1 && d.repeat.interval <= 365
+          && d.repeat.weekdays is list && d.repeat.weekdays.size() <= 7
+          && d.repeat.weekdays.hasOnly([0, 1, 2, 3, 4, 5, 6])
+          && (d.repeat.kind != 'weekly' || d.repeat.weekdays.size() > 0)
+          && d.repeat.end is string && (d.repeat.end == '' || d.repeat.end >= d.date);
+      }
+      function validEntry() {
+        let e = request.resource.data;
+        return e.keys().hasOnly(['id', 'type', 'updatedAt', 'deleted', 'data'])
+          && e.keys().hasAll(['id', 'type', 'updatedAt', 'deleted', 'data'])
+          && e.id is string && e.id.size() > 0 && e.id.size() <= 180
+          && e.type in ['plans', 'logs', 'history']
+          && e.updatedAt is string && e.updatedAt.size() <= 30 && e.deleted is bool
+          && ((e.deleted && e.data == null && e.type != 'history')
+            || (!e.deleted && e.data is map && e.data.id == e.id
+              && ((e.type in ['plans', 'logs'] && validWorkout(e.data))
+                || (e.type == 'history' && e.data.timestamp is string
+                  && e.data.action is string && e.data.exercise is string
+                  && e.data.date is string && e.data.group is string))));
+      }
+      allow read: if owner();
+      allow create: if owner() && validEntry();
+      allow update: if owner() && validEntry() && resource.data.type != 'history'
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.updatedAt >= resource.data.updatedAt;
+      allow delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
