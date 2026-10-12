@@ -1,6 +1,6 @@
 # Publish FORM with GitHub Pages
 
-Use a **new repository** if you want to keep your existing calendar online. You can reuse the same Firebase project; the exercise data has its own collection.
+Use a **new repository and a separate Firebase project** to keep FORM independent of your existing calendar. Follow [FIREBASE_SEPARATION.md](FIREBASE_SEPARATION.md) before switching the Firebase configuration or moving existing workouts.
 
 ## 1. Create the workout repository
 
@@ -53,7 +53,7 @@ The workflow runs tests, builds only the approved public assets, and publishes `
 
 ## 4. Enable workout cloud sync
 
-Follow **[README.md, step 6](README.md#6-connect-firebase-for-phonecomputer-sync)**. The existing Firebase configuration is included. You still need to publish the updated Firestore rules for the new `workoutRecords` collection.
+FORM's supplied web configuration has been applied for **`form-workout-44d44`**. Follow **[FIREBASE_SEPARATION.md](FIREBASE_SEPARATION.md)** to enable Email/Password, create Firestore and publish `firestore.workout.rules` in that project. Create your new FORM account and import a workout backup if needed. The calendar uses its existing separate project.
 
 ## Updating the website later
 
@@ -63,6 +63,6 @@ Edit the source files locally, use `preview.bat` to check the result, rerun the 
 
 GitHub Pages is the main documented route. The included `firebase.json` also supports Firebase Hosting with `dist/` as the public folder.
 
-If your Firebase project already hosts the calendar, **do not deploy hosting to its default site** unless you intend to replace it. Use a separate Hosting site and target first, following [Firebase's multisite guide](https://firebase.google.com/docs/hosting/multisites). Publishing rules to the shared project is separate from publishing Hosting; the rules file retains the original calendar paths.
+If you choose Firebase Hosting, use the **new FORM project** described in [FIREBASE_SEPARATION.md](FIREBASE_SEPARATION.md), and specify its actual project ID when deploying. Keep the calendar project's Hosting unchanged. The GitHub Pages route above does not need Firebase Hosting.
 
 No Cloud Functions, reminder service, server account JSON key or paid backend runtime is needed for FORM.

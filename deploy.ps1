@@ -26,6 +26,7 @@ function Assert-Ordinary([string]$Root,[string]$Relative,[switch]$AllowMissing) 
 try{
   Set-Location -LiteralPath $ProjectRoot
   $Files += 'workout/tests/fake-cloud.mjs'
+  $Files += '.firebaserc', 'FIREBASE_SEPARATION.md', 'firestore.workout.rules', 'workout/config.example.js', 'workout/tools/recover.cjs', 'workout/tools/recover.html'
   foreach($File in $Files){Assert-Ordinary $ProjectRoot $File}
   $Node=(Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
   Invoke-Native $Node @('--test','workout/tests/core.test.mjs')

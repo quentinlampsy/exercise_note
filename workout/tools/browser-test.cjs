@@ -2,8 +2,10 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 let chromium;
 try{({chromium}=require('playwright'));}catch{console.error('Browser checks need Playwright. Install it locally with npm install --no-save playwright, then npx playwright install chromium. Day-to-day use and npm test need no extra packages.');process.exit(1);}
 const {createServer}=require('./serve.cjs');
+const {createRecoveryServer}=require('./recover.cjs');
 async function run(){
  const server=createServer({offline:true});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const url=`http://127.0.0.1:${server.address().port}/form/`;
+ const recoveryServer=createRecoveryServer();await new Promise(resolve=>recoveryServer.listen(0,'127.0.0.1',resolve));const recoveryUrl=`http://127.0.0.1:${recoveryServer.address().port}/form-recovery/`;
  const edge='C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
  const output=path.resolve(__dirname,'../tests/screenshots');fs.mkdirSync(output,{recursive:true});
  // Browser profiles, downloads and temporary artifacts stay inside the project.
@@ -96,6 +98,7 @@ async function run(){
  await page.getByRole('searchbox',{name:'Search exercise history',exact:true}).fill('Cable row');
  assert.equal(await page.locator('.history-entry').count(),5);
  await page.screenshot({path:path.join(output,'mobile-history.png'),fullPage:true});
+ console.log('Browser checks: workout edits, recurrence, history and backups verified.');
  // Clean representative sample overview, isolated from the real Firebase project.
  await context.close();
  const sampleContext=await browser.newContext({viewport:{width:1440,height:1050},timezoneId:'Asia/Hong_Kong'});
@@ -107,11 +110,15 @@ async function run(){
  await samplePage.screenshot({path:path.join(output,'desktop-week.png'),fullPage:true});
  await samplePage.setViewportSize({width:390,height:844});await samplePage.screenshot({path:path.join(output,'mobile-sample.png'),fullPage:true});
  // The published shell can survive a reload with no internet after initial caching.
- await samplePage.evaluate(async()=>{await navigator.serviceWorker.register('./sw.js');await navigator.serviceWorker.ready;});
+ await samplePage.evaluate(async()=>{
+   await navigator.serviceWorker.register('./sw.js');
+   await Promise.race([navigator.serviceWorker.ready,new Promise((_,reject)=>setTimeout(()=>reject(Error('The offline service worker did not become ready within 15 seconds.')),15000))]);
+ });
  await samplePage.reload();await samplePage.locator('.exercise-card').first().waitFor();
  await sampleContext.setOffline(true);await samplePage.reload();await samplePage.getByRole('heading',{name:'Your week, in motion.'}).waitFor();
  assert.equal(await samplePage.locator('.exercise-card').count(),8);
  await sampleContext.setOffline(false);
+ console.log('Browser checks: offline shell verified.');
  // Exercise account isolation, pending writes, errors and reconnect through a
  // deterministic transport. No real credentials or production writes are used.
  const cloudContext=await browser.newContext({viewport:{width:390,height:844},timezoneId:'Asia/Hong_Kong'});
@@ -151,10 +158,23 @@ async function run(){
  await cloudPage.evaluate(()=>window.testSwitchUser({uid:'user-a',email:'user-a@example.com'}));
  await cloudPage.getByRole('button',{name:/Save exercise/}).click();assert.ok((await cloudPage.locator('#editor-error').textContent()).includes('account changed'));
  await cloudContext.close();
+ console.log('Browser checks: simulated cloud synchronization verified.');
+ // Recovery exports only FORM data, and leaves every original storage entry intact.
+ const recoveryContext=await browser.newContext(),recoveryPage=await recoveryContext.newPage();recoveryPage.on('pageerror',e=>errors.push(e.message));
+ await recoveryPage.goto(recoveryUrl);const backupRecords=JSON.parse(fs.readFileSync(path.join(output,'backup.json'),'utf8')).records;
+ await recoveryPage.evaluate(records=>{localStorage.setItem('form-workouts-v1:guest',JSON.stringify(records));localStorage.setItem('bazi-calendar-private-test','calendar notes must stay untouched');},backupRecords);
+ await recoveryPage.reload();assert.equal(await recoveryPage.locator('.journal').count(),1);
+ assert.equal((await recoveryPage.locator('main').textContent()).includes('calendar notes must stay untouched'),false);
+ const beforeRecovery=await recoveryPage.evaluate(()=>JSON.stringify({...localStorage}));
+ const recoveryDownloadPromise=recoveryPage.waitForEvent('download');await recoveryPage.getByRole('button',{name:'Download FORM backup',exact:true}).click();const recoveredDownload=await recoveryDownloadPromise;
+ await recoveredDownload.saveAs(path.join(output,'recovered-backup.json'));
+ assert.deepEqual(JSON.parse(fs.readFileSync(path.join(output,'recovered-backup.json'),'utf8')).records,backupRecords);
+ assert.equal(await recoveryPage.evaluate(()=>JSON.stringify({...localStorage})),beforeRecovery);
+ await recoveryContext.close();
  assert.deepEqual(errors,[]);
- console.log('PASS: desktop and phone layouts; per-set edits; completion; recurrence; routine edits; day removal; persistence; XSS escaping; history; backups; PWA offline reload; isolated account-sync simulation (offline retry, rejected writes, account isolation).');
+ console.log('PASS: desktop and phone layouts; per-set edits; recurrence; history; backups; PWA offline reload; isolated account-sync simulation; old-port recovery exports FORM data without changing it or exposing calendar notes.');
  console.log(`Screenshots: ${output}`);
  await sampleContext.close();
- }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
+ }finally{await browser.close();await Promise.all([server,recoveryServer].map(s=>new Promise(resolve=>s.close(resolve))));}
 }
 run().catch(error=>{console.error(error);process.exitCode=1;});
